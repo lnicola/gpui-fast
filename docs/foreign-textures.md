@@ -55,3 +55,11 @@ opacity, clipping and resizing; they check atlas reuse/generation retirement and
 reject invalid payloads, dimensions and a different device. Readback is confined
 to the test renderer. Wayland and X11 expose the same context through platform
 hooks. Other backends keep the default unsupported-image/context behavior.
+
+## Downstream dependencies
+
+This branch uses published wgpu 30.0.1 so Vello 0.11 can share its device and
+texture types. It applies the same API adaptation as GPUI Fast’s release tooling.
+It consequently lacks the unreleased Vulkan surface-drop and WebGL resize fixes
+noted in `release.toml`. The `gpui-pre-*` compatibility manifests match GPUI Kit
+0.9.0’s 0.3.11 snapshot requirements.

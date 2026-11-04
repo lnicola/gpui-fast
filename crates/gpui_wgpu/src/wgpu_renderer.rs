@@ -404,7 +404,7 @@ impl WgpuRenderer {
                 surface_caps
                     .formats
                     .iter()
-                    .find(|format| !format.has_srgb_suffix())
+                    .find(|format| !crate::fast::released_wgpu::is_srgb(format))
                     .copied()
             })
             .or_else(|| surface_caps.formats.first().copied())
