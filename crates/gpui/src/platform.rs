@@ -1244,6 +1244,11 @@ pub enum TextInputStateChange {
 
 #[expect(missing_docs)]
 pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
+    /// Backend-specific device and queue for producing images for this window.
+    fn gpu_context(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+        crate::fast::foreign_textures::unavailable_context()
+    }
+
     fn bounds(&self) -> Bounds<Pixels>;
     fn is_maximized(&self) -> bool;
     fn window_bounds(&self) -> WindowBounds;
@@ -1812,6 +1817,11 @@ impl From<RenderImageParams> for AtlasKey {
 
 #[expect(missing_docs)]
 pub trait PlatformAtlas {
+    /// Import a GPU image on the atlas device. The default backend has no support.
+    fn get_or_insert_gpu_image(&self, _image: &RenderImage) -> Result<Option<AtlasTile>> {
+        crate::fast::foreign_textures::unsupported_image()
+    }
+
     /// The builder runs with the atlas locked and must not re-enter the same atlas.
     fn get_or_insert_with<'a>(
         &self,
@@ -1840,7 +1850,7 @@ pub trait AtlasBackend {
 
 #[doc(hidden)]
 pub struct AtlasState<Backend> {
-    tiles_by_key: FxHashMap<AtlasKey, AtlasTile>,
+    pub(crate) tiles_by_key: FxHashMap<AtlasKey, AtlasTile>,
     pub backend: Backend,
 }
 
@@ -1938,6 +1948,10 @@ impl AtlasBackend for HeadlessAtlasBackend {
 }
 
 impl PlatformAtlas for HeadlessAtlas {
+    fn get_or_insert_gpu_image(&self, image: &RenderImage) -> Result<Option<AtlasTile>> {
+        crate::fast::foreign_textures::headless_gpu_image(self, image)
+    }
+
     fn get_or_insert_with<'a>(
         &self,
         key: AtlasKey,

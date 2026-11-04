@@ -215,6 +215,19 @@ No application-specific timeline policy belongs here.
   `fast::dynamic_textures` is `pub(crate)`; without calling the new methods,
   an app observes no difference in what GPUI draws.
 
+- Foreign GPU images (downstream import from `lnicola/t-gis`, commit
+  `51148960832428eb43af6f03130b4d8dac6c775a`): `RenderImage::from_gpu` and
+  `gpu_data`, `Window::gpu_context`, defaulted `PlatformWindow::gpu_context`
+  and `PlatformAtlas::get_or_insert_gpu_image`, and
+  `AtlasState::get_or_insert_tile` let compute renderers supply immutable
+  images without CPU readback. `gpui_wgpu` exports `WgpuImage` and
+  `SharedGpuContext`; `WgpuRenderer::shared_context` exposes its active device
+  and queue. The headless renderer exposes those and its atlas for tests.
+  This is an intentional downstream API extension: normal images and default
+  platform implementations keep working. Implementation lives in each crate's
+  `fast::foreign_textures` module. See [foreign-textures.md](foreign-textures.md)
+  for the producer, lifetime and device-recovery contracts.
+
 When the check fails, move the change into a `fast/` module and leave a hook
 behind that names it; use `git diff <import_commit> -- <file>` to see what
 differs.

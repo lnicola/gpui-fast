@@ -2109,6 +2109,10 @@ impl PlatformWindow for WaylandWindow {
         self.0.schedule_frame();
     }
 
+    fn gpu_context(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+        crate::fast::foreign_textures::gpu_context(self.borrow().renderer.as_ref())
+    }
+
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         self.borrow()
             .renderer

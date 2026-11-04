@@ -1,15 +1,15 @@
 use anyhow::{Context as _, Result};
-use etagere::{BucketedAtlasAllocator, size2};
+use etagere::size2;
 use gpui::{
     AtlasBackend, AtlasKey, AtlasState, AtlasTextureId, AtlasTextureKind, AtlasTextureList,
-    AtlasTile, Bounds, DevicePixels, PlatformAtlas, Point, Size,
+    AtlasTile, Bounds, DevicePixels, PlatformAtlas, Point, RenderImage, Size,
 };
 use parking_lot::Mutex;
 use std::{borrow::Cow, ops, sync::Arc};
 
 use crate::WgpuContext;
 
-fn device_size_to_etagere(size: Size<DevicePixels>) -> etagere::Size {
+pub(crate) fn device_size_to_etagere(size: Size<DevicePixels>) -> etagere::Size {
     size2(size.width.0, size.height.0)
 }
 
@@ -20,7 +20,7 @@ fn etagere_point_to_device(point: etagere::Point) -> Point<DevicePixels> {
     }
 }
 
-pub struct WgpuAtlas(Mutex<AtlasState<WgpuAtlasTextures>>);
+pub struct WgpuAtlas(pub(crate) Mutex<AtlasState<WgpuAtlasTextures>>);
 
 struct PendingUpload {
     id: AtlasTextureId,
@@ -28,14 +28,14 @@ struct PendingUpload {
     data: Vec<u8>,
 }
 
-struct WgpuAtlasTextures {
-    device: Arc<wgpu::Device>,
+pub(crate) struct WgpuAtlasTextures {
+    pub(crate) device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-    max_texture_size: u32,
+    pub(crate) max_texture_size: u32,
     color_texture_format: wgpu::TextureFormat,
-    storage: WgpuAtlasStorage,
+    pub(crate) storage: WgpuAtlasStorage,
     pending_uploads: Vec<PendingUpload>,
-    next_texture_generation: u64,
+    pub(crate) next_texture_generation: u64,
 }
 
 pub struct WgpuTextureInfo {
@@ -101,6 +101,7 @@ impl WgpuAtlas {
     /// The atlas will lazily recreate textures as needed on subsequent frames.
     pub fn handle_device_lost(&self, context: &WgpuContext) {
         self.0.lock().clear(|textures| {
+            crate::fast::foreign_textures::reset_texture_limit(textures, context);
             textures.device = context.device.clone();
             textures.queue = context.queue.clone();
             textures.color_texture_format = context.color_texture_format();
@@ -111,6 +112,10 @@ impl WgpuAtlas {
 }
 
 impl PlatformAtlas for WgpuAtlas {
+    fn get_or_insert_gpu_image(&self, image: &RenderImage) -> Result<Option<AtlasTile>> {
+        crate::fast::foreign_textures::import_image(self, image)
+    }
+
     fn get_or_insert_with<'a>(
         &self,
         key: AtlasKey,
@@ -143,7 +148,7 @@ impl AtlasBackend for WgpuAtlasTextures {
         };
 
         if let Some(mut texture) = texture_slot.take() {
-            texture.allocator.deallocate(tile.tile_id.into());
+            crate::fast::foreign_textures::deallocate(&mut texture.fast_allocator, tile.tile_id);
             texture.decrement_ref_count();
             if texture.is_unreferenced() {
                 self.pending_uploads
@@ -229,7 +234,7 @@ impl WgpuAtlasTextures {
                 kind,
             },
             generation,
-            allocator: BucketedAtlasAllocator::new(device_size_to_etagere(size)),
+            fast_allocator: crate::fast::foreign_textures::allocator(size),
             format,
             texture,
             view,
@@ -299,7 +304,7 @@ impl WgpuAtlasTextures {
 }
 
 #[derive(Default)]
-struct WgpuAtlasStorage {
+pub(crate) struct WgpuAtlasStorage {
     monochrome_textures: AtlasTextureList<WgpuAtlasTexture>,
     subpixel_textures: AtlasTextureList<WgpuAtlasTexture>,
     polychrome_textures: AtlasTextureList<WgpuAtlasTexture>,
@@ -335,19 +340,19 @@ impl WgpuAtlasStorage {
     }
 }
 
-struct WgpuAtlasTexture {
-    id: AtlasTextureId,
-    generation: u64,
-    allocator: BucketedAtlasAllocator,
-    texture: wgpu::Texture,
-    view: wgpu::TextureView,
-    format: wgpu::TextureFormat,
-    live_atlas_keys: u32,
+pub(crate) struct WgpuAtlasTexture {
+    pub(crate) id: AtlasTextureId,
+    pub(crate) generation: u64,
+    pub(crate) fast_allocator: crate::fast::foreign_textures::AtlasAllocator,
+    pub(crate) texture: wgpu::Texture,
+    pub(crate) view: wgpu::TextureView,
+    pub(crate) format: wgpu::TextureFormat,
+    pub(crate) live_atlas_keys: u32,
 }
 
 impl WgpuAtlasTexture {
     fn allocate(&mut self, size: Size<DevicePixels>) -> Option<AtlasTile> {
-        let allocation = self.allocator.allocate(device_size_to_etagere(size))?;
+        let allocation = crate::fast::foreign_textures::allocate(&mut self.fast_allocator, size)?;
         let tile = AtlasTile {
             texture_id: self.id,
             tile_id: allocation.id.into(),

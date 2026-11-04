@@ -1809,6 +1809,10 @@ impl PlatformWindow for X11Window {
         crate::fast::composition::x11::set_composition_order(self, fast_surfaces)
     }
 
+    fn gpu_context(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+        crate::fast::foreign_textures::gpu_context(self.0.state.borrow().renderer.as_ref())
+    }
+
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         self.0
             .state

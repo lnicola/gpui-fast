@@ -1,13 +1,8 @@
-use crate::{DevicePixels, Pixels, Result, SharedString, Size, size};
+use crate::{DevicePixels, Pixels, Result, SharedString, Size};
 use smallvec::SmallVec;
 
 use image::{Delay, Frame};
-use std::{
-    borrow::Cow,
-    fmt,
-    hash::Hash,
-    sync::atomic::{AtomicUsize, Ordering::SeqCst},
-};
+use std::{borrow::Cow, fmt, hash::Hash};
 
 /// A source of assets for this app to use.
 pub trait AssetSource: 'static + Send + Sync {
@@ -45,7 +40,8 @@ pub struct RenderImage {
     pub id: ImageId,
     /// The scale factor of this image on render.
     pub(crate) scale_factor: f32,
-    data: SmallVec<[Frame; 1]>,
+    pub(crate) data: SmallVec<[Frame; 1]>,
+    pub(crate) fast_gpu: Option<crate::fast::foreign_textures::GpuImage>,
 }
 
 impl PartialEq for RenderImage {
@@ -59,12 +55,11 @@ impl Eq for RenderImage {}
 impl RenderImage {
     /// Create a new image from the given data.
     pub fn new(data: impl Into<SmallVec<[Frame; 1]>>) -> Self {
-        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
-
         Self {
-            id: ImageId(NEXT_ID.fetch_add(1, SeqCst)),
+            id: crate::fast::foreign_textures::next_image_id(),
             scale_factor: 1.0,
             data: data.into(),
+            fast_gpu: None,
         }
     }
 
@@ -77,13 +72,7 @@ impl RenderImage {
 
     /// Get the size of this image, in pixels.
     pub fn size(&self, frame_index: usize) -> Size<DevicePixels> {
-        self.data
-            .get(frame_index)
-            .map(|frame| {
-                let (width, height) = frame.buffer().dimensions();
-                size(width.into(), height.into())
-            })
-            .unwrap_or_default()
+        crate::fast::foreign_textures::image_size(self, frame_index)
     }
 
     /// Get the size of this image, in pixels for display, adjusted for the scale factor.
@@ -102,7 +91,7 @@ impl RenderImage {
 
     /// Get the number of frames for this image.
     pub fn frame_count(&self) -> usize {
-        self.data.len()
+        crate::fast::foreign_textures::frame_count(self)
     }
 }
 
@@ -110,7 +99,7 @@ impl fmt::Debug for RenderImage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ImageData")
             .field("id", &self.id)
-            .field("size", &self.data.first().map(|f| f.buffer().dimensions()))
+            .field("size", &crate::fast::foreign_textures::image_size(self, 0))
             .finish()
     }
 }

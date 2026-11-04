@@ -5,6 +5,8 @@ mod wgpu_context;
 mod wgpu_renderer;
 
 pub use cosmic_text_system::*;
+pub use fast::foreign_textures::SharedGpuContext;
+pub use fast::foreign_textures::WgpuImage;
 pub use wgpu;
 pub use wgpu_atlas::*;
 pub use wgpu_context::*;

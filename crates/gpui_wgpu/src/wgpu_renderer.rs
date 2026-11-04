@@ -9,7 +9,6 @@ use gpui::{
 use log::warn;
 #[cfg(not(target_family = "wasm"))]
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use smallvec::SmallVec;
 use std::cell::RefCell;
 use std::num::NonZeroU64;
 use std::ops::Range;
@@ -223,7 +222,7 @@ pub(crate) struct WgpuRendererCore {
     pub(crate) rendering_params: RenderingParameters,
     is_bgr: bool,
     dual_source_blending: bool,
-    adapter_info: wgpu::AdapterInfo,
+    pub(crate) adapter_info: wgpu::AdapterInfo,
     pub(crate) target_format: wgpu::TextureFormat,
     max_texture_size: u32,
     pub(crate) fast_frame: crate::fast::frame::FrameState,
@@ -267,7 +266,7 @@ pub struct WgpuRenderer {
 }
 
 impl WgpuRenderer {
-    fn core(&self) -> Option<&WgpuRendererCore> {
+    pub(crate) fn core(&self) -> Option<&WgpuRendererCore> {
         match &self.state {
             RendererState::Ready { core, .. } | RendererState::Unconfigured { core } => Some(core),
             RendererState::Released => None,
@@ -1710,18 +1709,7 @@ impl WgpuRendererCore {
     }
 
     fn prepare_texture_bind_groups(&mut self, scene: &Scene) {
-        let mut texture_ids = SmallVec::<[AtlasTextureId; 8]>::new();
-        for batch in scene.batches() {
-            let texture_id = match batch {
-                PrimitiveBatch::MonochromeSprites { texture_id, .. }
-                | PrimitiveBatch::SubpixelSprites { texture_id, .. }
-                | PrimitiveBatch::PolychromeSprites { texture_id, .. } => texture_id,
-                _ => continue,
-            };
-            if !texture_ids.contains(&texture_id) {
-                texture_ids.push(texture_id);
-            }
-        }
+        let texture_ids = crate::fast::foreign_textures::texture_ids(scene);
 
         self.resources_mut()
             .atlas_texture_bind_groups
